@@ -8,7 +8,10 @@ bool EmulationController::start(const QString& port, const BatteryModelParams& p
     m_engine.setParameters(params);
     m_consumed_ah = 0.0;
     m_last_ts = 0;
-    return m_comm.openDevice(port); // Один вызов — и сразу возврат результата
+    if (!m_comm.openDevice(port))
+        return false;
+    m_comm.sendPowerState(true);
+    return true;
 }
 
 void EmulationController::processStep(const TelemetryFrame& frame) {

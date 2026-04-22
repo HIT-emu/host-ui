@@ -9,22 +9,21 @@ int main(int argc, char *argv[])
     EmulationController controller;
 
     // Настраиваем параметры модели (те, что были в твоем battery_fixed.c)
+    // Li-ion coefficients from battery_emulation_report.md
     BatteryModelParams p;
-    p.E0 = 12.8;
-    p.k1 = 0.1;
-    p.k2 = 0.05;
-    p.A = 0.2;
-    p.B = 1.5;
-    p.capacity_ah = 10.0;
+    p.E0 = 3.781272;
+    p.k1 = 0.093608;
+    p.k2 = 0.058901;
+    p.A  = 0.563978;
+    p.B  = 7.504662;
+    p.capacity_ah = 0.5087;
 
-    // Подписываемся на обновление данных, чтобы видеть результат в консоли
     QObject::connect(&controller, &EmulationController::statusUpdated,
                      [](double vModel, double soc){
                          qDebug() << "Model Voltage:" << vModel << "V | Consumed:" << soc << "Ah";
                      });
 
-    // Запускаем. Путь к порту возьми из вывода Python-скрипта (например /dev/ttys001)
-    if (!controller.start("/dev/ttys002", p)) {
+    if (!controller.start("/dev/ttyACM1", p)) {
         qDebug() << "Could not open port!";
         return -1;
     }

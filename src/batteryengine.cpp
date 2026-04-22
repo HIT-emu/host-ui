@@ -1,4 +1,5 @@
 #include "batteryengine.h"
+#include <cmath>
 
 // Константы из твоего battery_fixed.c
 #define LN2_Q16  0x0000B172
@@ -70,28 +71,15 @@ int32_t BatteryEngine::f_exp(int32_t x) {
 }
 
 double BatteryEngine::calculateVoltage(double I, double C) {
-    // Входные double конвертируем в fixed-point Q16.16
-    // Используем capacity_ah напрямую
-    int32_t f_Q = (int32_t)(m_params.capacity_ah * 65536.0);
-    int32_t f_I = (int32_t)(I * 65536.0);
-    int32_t f_C = (int32_t)(C * 65536.0);
+    const double Q = m_params.capacity_ah;
+    // Clamp SoC away from 0 and 1 so that ln() arguments stay positive
+    const double soc = std::max(1e-6, std::min(C / Q, 1.0 - 1e-6));
 
-    int32_t f_E0 = (int32_t)(m_params.E0 * 65536.0);
-    int32_t f_k1 = (int32_t)(m_params.k1 * 65536.0);
-    int32_t f_k2 = (int32_t)(m_params.k2 * 65536.0);
-    int32_t f_A  = (int32_t)(m_params.A * 65536.0);
-    int32_t f_B  = (int32_t)(m_params.B * 65536.0);
-    const int32_t f_R = 7144; // 0.109 Ohm в Q16.16
-
-    // Модель: V = E0 - k1*ln(1-C/Q) + k2*ln(C/Q) - R*I + A*exp(-B*C)
-    int32_t ratio = f_div(f_C, f_Q);
-    int32_t ln1 = f_ln((1 << 16) - ratio);
-    int32_t ln2 = f_ln(ratio);
-    int32_t exp_term = f_mul(f_A, f_exp(-f_mul(f_B, f_C)));
-
-    int32_t res = f_E0 + f_mul(f_k1, ln1) + f_mul(f_k2, ln2) - f_mul(f_R, f_I) + exp_term;
-
-    return (double)res / 65536.0;
+    return m_params.E0
+         + m_params.k1 * std::log(1.0 - soc)
+         + m_params.k2 * std::log(soc)
+         - 0.109 * I
+         + m_params.A  * std::exp(-m_params.B * C);
 }
 
 
