@@ -1,0 +1,11 @@
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+.DS_Store
+CMakeLists.txt.user
+.qtc/
+__pycache__/
+*.pyc
