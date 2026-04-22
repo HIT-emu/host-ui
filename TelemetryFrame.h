@@ -10,7 +10,7 @@ struct TelemetryFrame {
 };
 
 struct BatteryModelParams {
-    double E0, k1, k2, A, B;
+    double E0, k1, k2, A, B, R;
     double capacity_ah;
 };
 

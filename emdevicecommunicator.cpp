@@ -17,9 +17,8 @@ bool EmDeviceCommunicator::openDevice(const QString& portName, int baudRate) {
 }
 
 void EmDeviceCommunicator::closeDevice() {
-    if (m_serial.isOpen()) {
+    if (m_serial.isOpen())
         m_serial.close();
-    }
 }
 
 void EmDeviceCommunicator::sendPowerState(bool on) {
@@ -27,9 +26,24 @@ void EmDeviceCommunicator::sendPowerState(bool on) {
     m_serial.flush();
 }
 
+void EmDeviceCommunicator::setVoutRange(uint32_t min_mv, uint32_t max_mv) {
+    m_vout_min_mv = min_mv;
+    m_vout_max_mv = max_mv;
+}
+
 void EmDeviceCommunicator::sendTargetVoltage(uint32_t voltage_mv) {
+    if (!m_serial.isOpen()) return;
+    // Firmware PWM period = 480. Inverted: duty 480 = min voltage, duty 0 = max voltage.
+    const uint32_t period = 480;
+    uint32_t mv   = qBound(m_vout_min_mv, voltage_mv, m_vout_max_mv);
+    uint32_t duty = period * (m_vout_max_mv - mv) / (m_vout_max_mv - m_vout_min_mv);
+    m_serial.write(QString("vout %1\n").arg(duty).toUtf8());
+    m_serial.flush();
+}
+
+void EmDeviceCommunicator::sendRawString(const QString& data) {
     if (m_serial.isOpen()) {
-        m_serial.write(QString("vout %1\n").arg(voltage_mv).toUtf8());
+        m_serial.write(data.toUtf8());
         m_serial.flush();
     }
 }
@@ -52,7 +66,12 @@ void EmDeviceCommunicator::processLine(const QByteArray& line) {
     }
     if (line.startsWith("[VDD]"))
         return;
-    if (line.length() < 6 || line[0] != '[')
+    if (line[0] != '[') {
+        // plain-text firmware output (e.g. help strings)
+        emit logMessage(QString::fromUtf8(line));
+        return;
+    }
+    if (line.length() < 6)
         return;
 
     const QByteArray tag   = line.left(5);
@@ -60,6 +79,9 @@ void EmDeviceCommunicator::processLine(const QByteArray& line) {
     bool ok = false;
 
     if (tag == "[SEC]") {
+        // New frame: reset accumulated data
+        m_frame  = {};
+        m_fields = 0;
         uint32_t sec = value.toULong(&ok);
         if (ok) { m_frame.timestamp_ms = sec * 1000; m_fields = 1; }
     } else if (tag == "[VOL]") {
@@ -69,23 +91,14 @@ void EmDeviceCommunicator::processLine(const QByteArray& line) {
         double cur = value.toDouble(&ok);
         if (ok) { m_frame.current_ma = cur / 1000.0; m_fields++; }
     }
+    // [AHR] and [WHR] are ignored for emulation purposes
 
     if (m_fields >= 3) {
-        // Формируем текстовое представление структуры для лога
-        QString logEntry = QString("DATA FRAME: Time=%1ms, V=%2mV, I=%3mA")
-                               .arg(m_frame.timestamp_ms)
-                               .arg(m_frame.voltage_mv, 0, 'f', 2)
-                               .arg(m_frame.current_ma, 0, 'f', 2);
-
-        emit logMessage(logEntry); // Отправляем в лог
-        emit telemetryReceived(m_frame); // Отправляем на расчет
+        emit logMessage(QString("DATA: t=%1ms V=%2mV I=%3mA")
+                            .arg(m_frame.timestamp_ms)
+                            .arg(m_frame.voltage_mv, 0, 'f', 1)
+                            .arg(m_frame.current_ma, 0, 'f', 3));
+        emit telemetryReceived(m_frame);
         m_fields = 0;
-    }
-}
-
-void EmDeviceCommunicator::sendRawString(const QString& data) {
-    if (m_serial.isOpen()) {
-        m_serial.write(data.toUtf8() + "\n"); // Важно добавить \n, чтобы МК понял конец команды
-        m_serial.flush();
     }
 }

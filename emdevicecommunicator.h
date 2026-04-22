@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QSerialPort>
+#include <QSerialPortInfo>
 #include "TelemetryFrame.h"
 
 class EmDeviceCommunicator : public QObject {
@@ -8,7 +9,8 @@ class EmDeviceCommunicator : public QObject {
 public:
     explicit EmDeviceCommunicator(QObject *parent = nullptr);
     bool openDevice(const QString& portName, int baudRate = 115200);
-    void closeDevice(); // <-- Добавь эту строку
+    void closeDevice();
+    void setVoutRange(uint32_t min_mv, uint32_t max_mv);
 
 public slots:
     void sendTargetVoltage(uint32_t voltage_mv);
@@ -29,4 +31,6 @@ private:
     QByteArray     m_rxBuffer;
     TelemetryFrame m_frame = {};
     int            m_fields = 0;
+    uint32_t       m_vout_min_mv = 1330;
+    uint32_t       m_vout_max_mv = 3230;
 };
