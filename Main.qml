@@ -179,17 +179,32 @@ ApplicationWindow {
             }
 
             Button {
+                text: controller.connected && !controller.active ? "Откл." : ""
+                visible: controller.connected && !controller.active
+                Layout.preferredHeight: 35
+                onClicked: controller.closePort()
+            }
+
+            Button {
+                text: !controller.connected && !controller.active ? "Подкл." : ""
+                visible: !controller.connected && !controller.active
+                Layout.preferredHeight: 35
+                onClicked: controller.openPort(portName.text)
+            }
+
+            Button {
                 text: controller.active ? "СТОП" : "СТАРТ"
                 Layout.preferredHeight: 35
                 onClicked: {
                     if (!controller.active) {
                         vSeries.clear()
                         ahSeries.clear()
+                        curSeries.clear()
                         totalTime  = 0
                         liveMode   = true
                         axisX.min  = 0
                         axisX.max  = windowSize
-                        axisY_Ah.max = 0.005
+                        axisY_Ah.max = 5
                         timeSlider.value = 0
                         controller.start(portName.text,
                                          paramE0, paramK1, paramK2,
@@ -221,7 +236,7 @@ ApplicationWindow {
                 color: "#00ccff"; font.pixelSize: 18; font.bold: true; font.family: "Courier"
             }
             Label {
-                text: "Q: " + controller.consumedAh.toFixed(4) + " Ah"
+                text: "Q: " + (controller.consumedAh * 1000).toFixed(2) + " mAh"
                 color: "#ffaa00"; font.pixelSize: 18; font.bold: true; font.family: "Courier"
             }
             Item { Layout.fillWidth: true }
@@ -253,9 +268,15 @@ ApplicationWindow {
             }
             ValueAxis {
                 id: axisY_Ah
-                min: 0; max: 0.005
-                titleText: "Ёмкость (Ah)"
+                min: 0; max: 5
+                titleText: "Ёмкость (mAh)"
                 color: "#ffaa00"
+            }
+            ValueAxis {
+                id: axisY_mA
+                min: 0; max: 10
+                titleText: "Ток (mA)"
+                color: "#00ff88"
             }
 
             LineSeries {
@@ -267,6 +288,11 @@ ApplicationWindow {
                 id: ahSeries; name: "Capacity"
                 axisX: axisX; axisYRight: axisY_Ah
                 color: "#ffaa00"; width: 2
+            }
+            LineSeries {
+                id: curSeries; name: "Current"
+                axisX: axisX; axisY: axisY_mA
+                color: "#00ff88"; width: 2
             }
         }
 
@@ -383,14 +409,18 @@ ApplicationWindow {
                     id: commandInput
                     Layout.fillWidth: true
                     Layout.preferredHeight: 35
-                    color: "white"
+                    color: "#00ff00"
                     font.family: "Courier"
                     verticalAlignment: TextInput.AlignVCenter
+                    placeholderText: "введите команду..."
+                    placeholderTextColor: "#444"
+                    palette.text: "#00ff00"
+                    palette.highlight: "#005500"
+                    palette.highlightedText: "#00ff00"
                     background: Rectangle { color: "#222"; border.color: "#444" }
                     onAccepted: {
                         if (text.trim() !== "") {
                             controller.sendRawCommand(text)
-                            logArea.append("[UI]: " + text)
                             text = ""
                         }
                     }
@@ -403,18 +433,22 @@ ApplicationWindow {
     Connections {
         target: controller
 
-        function onPointsUpdated(t, v) {
+        function onPointsUpdated(t, v, i_ua) {
+            var i_ma = i_ua / 1000.0
             vSeries.append(t, v)
-            ahSeries.append(t, controller.consumedAh)
+            ahSeries.append(t, controller.consumedAh * 1000)
+            curSeries.append(t, i_ma)
 
             totalTime = t
 
-            if (liveMode) {
+            if (liveMode)
                 updateAxes()
-            }
 
-            if (controller.consumedAh > axisY_Ah.max)
-                axisY_Ah.max = controller.consumedAh * 1.2
+            if (controller.consumedAh * 1000 > axisY_Ah.max)
+                axisY_Ah.max = controller.consumedAh * 1000 * 1.2
+
+            if (i_ma > axisY_mA.max)
+                axisY_mA.max = i_ma * 1.2
         }
 
         function onLogReceived(msg) {

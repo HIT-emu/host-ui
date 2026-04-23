@@ -10,7 +10,19 @@ bool EmDeviceCommunicator::openDevice(const QString& portName, int baudRate) {
     m_serial.setStopBits(QSerialPort::OneStop);
     m_serial.setFlowControl(QSerialPort::NoFlowControl);
     if (m_serial.open(QIODevice::ReadWrite)) {
-        connect(&m_serial, &QSerialPort::readyRead, this, &EmDeviceCommunicator::onReadyRead);
+        connect(&m_serial, &QSerialPort::readyRead,
+                this, &EmDeviceCommunicator::onReadyRead);
+        connect(&m_serial, &QSerialPort::errorOccurred,
+                this, [this](QSerialPort::SerialPortError e) {
+            if (e == QSerialPort::ResourceError) {
+                emit logMessage("[WARN] Port lost, reconnecting...");
+                m_serial.close();
+                emit connectionLost();
+            } else if (e != QSerialPort::NoError) {
+                emit logMessage(QString("[ERR] Serial error %1: %2")
+                                .arg(e).arg(m_serial.errorString()));
+            }
+        });
         return true;
     }
     return false;
@@ -60,18 +72,9 @@ void EmDeviceCommunicator::onReadyRead() {
 }
 
 void EmDeviceCommunicator::processLine(const QByteArray& line) {
-    if (line.startsWith("[INF]") || line.startsWith("[ERR]") || line.startsWith("[VER]")) {
-        emit logMessage(QString::fromUtf8(line));
-        return;
-    }
-    if (line.startsWith("[VDD]"))
-        return;
-    if (line[0] != '[') {
-        // plain-text firmware output (e.g. help strings)
-        emit logMessage(QString::fromUtf8(line));
-        return;
-    }
-    if (line.length() < 6)
+    emit logMessage(QString::fromUtf8(line));
+
+    if (line.length() < 6 || line[0] != '[')
         return;
 
     const QByteArray tag   = line.left(5);
@@ -79,7 +82,6 @@ void EmDeviceCommunicator::processLine(const QByteArray& line) {
     bool ok = false;
 
     if (tag == "[SEC]") {
-        // New frame: reset accumulated data
         m_frame  = {};
         m_fields = 0;
         uint32_t sec = value.toULong(&ok);
@@ -91,13 +93,8 @@ void EmDeviceCommunicator::processLine(const QByteArray& line) {
         double cur = value.toDouble(&ok);
         if (ok) { m_frame.current_ma = cur / 1000.0; m_fields++; }
     }
-    // [AHR] and [WHR] are ignored for emulation purposes
 
     if (m_fields >= 3) {
-        emit logMessage(QString("DATA: t=%1ms V=%2mV I=%3mA")
-                            .arg(m_frame.timestamp_ms)
-                            .arg(m_frame.voltage_mv, 0, 'f', 1)
-                            .arg(m_frame.current_ma, 0, 'f', 3));
         emit telemetryReceived(m_frame);
         m_fields = 0;
     }

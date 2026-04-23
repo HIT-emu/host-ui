@@ -20,6 +20,7 @@ public slots:
 signals:
     void telemetryReceived(const TelemetryFrame& frame);
     void logMessage(const QString& msg);
+    void connectionLost();
 
 private slots:
     void onReadyRead();
